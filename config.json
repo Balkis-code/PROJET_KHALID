@@ -1,0 +1,36 @@
+{
+  "classical": {
+    "min_support": 0.90,
+    "min_confidence": 0.95,
+    "max_lhs_size": 2,
+    "enabled": true,
+    "description": "Découverte classique avec patterns et candidats"
+  },
+  "agentic": {
+    "model": "claude-3-5-sonnet-20241022",
+    "enabled": true,
+    "timeout": 30,
+    "description": "Découverte assistée par Claude avec analyse sémantique"
+  },
+  "experiment": {
+    "output_dir": "./results",
+    "generate_plots": true,
+    "generate_report": true,
+    "verbose": true,
+    "description": "Configuration de l'expérimentation"
+  },
+  "datasets": [
+    {
+      "path": "t1.csv",
+      "name": "Employee Dataset",
+      "enabled": true,
+      "description": "Données d'employés du gouvernement"
+    },
+    {
+      "path": "US_Phone_Code.csv",
+      "name": "Phone Code Dataset",
+      "enabled": true,
+      "description": "Codes téléphoniques des États-Unis"
+    }
+  ]
+}
