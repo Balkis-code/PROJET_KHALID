@@ -3,49 +3,33 @@ import os
 import pandas as pd
 import time
 
-# =========================
-# CONFIG
-# =========================
-project_path = r"C:\Users\manso\Downloads\PROJET_KHALID\data"
+project_path = r"C:\Users\manso\Downloads\PROJEKT_KHALID"
 sys.path.insert(0, project_path)
 
 from classical_pfd_algorithm import ClassicalPFDDiscovery
 
 DATA_BASE_PATH = r"C:\Users\manso\Downloads\PROJET_KHALID\data"
 
-# =========================
-# AFFICHAGE
-# =========================
 print("\n" + "=" * 80)
-print("SOURCE 1: DGOV - APPROCHE CLASSIQUE (TOUS LES FICHIERS)")
+print("SOURCE 2: CHE - APPROCHE CLASSIQUE (TOUS LES FICHIERS)")
 print("=" * 80)
 
-# =========================
-# FICHIERS
-# =========================
-dgov_files = [
-    os.path.join(DATA_BASE_PATH, "DGOV", "570-1.csv"),
-    os.path.join(DATA_BASE_PATH, "DGOV", "6339-1.csv"),
-    os.path.join(DATA_BASE_PATH, "DGOV", "6397-1.csv"),
-    os.path.join(DATA_BASE_PATH, "DGOV", "10492-1.csv"),
-    os.path.join(DATA_BASE_PATH, "DGOV", "10642-1.csv"),
+# ✅ AVEC EXTENSION .csv
+che_files = [
+    os.path.join(DATA_BASE_PATH, "CHE", "mechanism_refs.csv"),
+    os.path.join(DATA_BASE_PATH, "CHE", "metabolism_refs.csv"),
+    os.path.join(DATA_BASE_PATH, "CHE", "protein_classification.csv"),
+    os.path.join(DATA_BASE_PATH, "CHE", "research_companies.csv"),
+    os.path.join(DATA_BASE_PATH, "CHE", "variant_sequences.csv"),
 ]
 
 results = []
 
-# =========================
-# BOUCLE PRINCIPALE
-# =========================
-for i, file_path in enumerate(dgov_files, 1):
-
+for i, file_path in enumerate(che_files, 1):
     file_name = os.path.basename(file_path)
-
     print(f"\n[{i}/5] {file_name}")
 
     try:
-        # =========================
-        # CHARGEMENT
-        # =========================
         print("  Chargement du fichier...", flush=True)
 
         df = pd.read_csv(
@@ -54,41 +38,24 @@ for i, file_path in enumerate(dgov_files, 1):
             on_bad_lines='skip'
         )
 
-        # garder seulement les colonnes texte
         df = df.select_dtypes(include=['object', 'string'])
-
-        # supprimer colonnes totalement vides
         df = df.dropna(axis=1, how='all')
-
-        # convertir en string
         df = df.astype(str)
 
-        # =========================
-        # SOLUTION ANTI-LENTEUR
-        # =========================
         MAX_ROWS = 2000
 
         if len(df) > MAX_ROWS:
             print(f"  Dataset trop grand ({len(df)} lignes)")
             print(f"  Réduction à {MAX_ROWS} lignes pour accélérer")
-
-            df = df.sample(
-                n=MAX_ROWS,
-                random_state=42
-            )
+            df = df.sample(n=MAX_ROWS, random_state=42)
 
         print(f"  ✓ {len(df)} lignes")
         print(f"  ✓ {len(df.columns)} colonnes")
 
-        # =========================
-        # ANALYSE
-        # =========================
         print("  Initialisation algorithme...", flush=True)
-
         discovery = ClassicalPFDDiscovery(df)
 
         print("  Lancement discover()...", flush=True)
-
         start = time.time()
 
         pfds = discovery.discover(
@@ -99,17 +66,11 @@ for i, file_path in enumerate(dgov_files, 1):
 
         elapsed = time.time() - start
 
-        print("  discover() terminé", flush=True)
-
-        # =========================
-        # RÉSULTATS
-        # =========================
         num_pfds = len(pfds)
 
         print(f"  ✓ {num_pfds} PFDs trouvées")
         print(f"  ✓ Temps: {elapsed:.2f}s")
 
-        # ✅ AFFICHER LES PFDs DÉCOUVERTES
         if not pfds.empty and num_pfds > 0:
             print("\n  📋 Détail des PFDs:")
             for idx, row in pfds.iterrows():
@@ -131,27 +92,19 @@ for i, file_path in enumerate(dgov_files, 1):
         })
 
     except Exception as e:
-
         print("\n" + "!" * 60)
         print(f"ERREUR SUR {file_name}")
         print("!" * 60)
-
         print(type(e).__name__)
         print(e)
-
         continue
 
-# =========================
-# RÉSUMÉ FINAL
-# =========================
 print("\n" + "=" * 80)
 print("RÉSUMÉ FINAL")
 print("=" * 80)
 
 if results:
-
     df_res = pd.DataFrame(results)
-
     print("\n")
     print(df_res.to_string(index=False))
 
