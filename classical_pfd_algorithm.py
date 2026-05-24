@@ -75,6 +75,37 @@ class PatternExtractor:
 
 
 # ============================================================================
+# TABLE ENRICHER  (utilisé par mistral_pfd_algo.py)
+# ============================================================================
+
+class TableEnricher:
+
+    def __init__(self):
+        self.extractor = PatternExtractor()
+        self.derived_cols = []   # liste de (derived_name, source_col)
+
+    def enrich(self, df):
+        extras = {}
+        self.derived_cols = []
+
+        for col in df.columns:
+            series = df[col]
+            if series.nunique() <= 1:
+                continue
+
+            pairs = self.extractor.extract_patterns(series, col)
+            for derived_name, derived_series in pairs:
+                extras[derived_name] = derived_series.values
+                self.derived_cols.append((derived_name, col))
+
+        enriched = df.copy()
+        for name, vals in extras.items():
+            enriched[name] = vals
+
+        return enriched
+
+
+# ============================================================================
 # CANDIDATE GENERATOR
 # ============================================================================
 
@@ -162,9 +193,7 @@ class PFDValidator:
                 if missing:
                     continue
 
-                # ← CORRECTION : ignorer les colonnes RHS trivalement constantes
-                # Si le RHS n'a qu'une seule valeur dans tout le dataset,
-                # n'importe quelle LHS le "détermine" → faux positif
+                # Ignorer les colonnes RHS trivialement constantes (faux positifs)
                 if enriched_df[rhs_col].nunique(dropna=True) < 2:
                     continue
 
@@ -210,7 +239,7 @@ class PFDValidator:
                 print(f"  Erreur candidat {idx}: {e}")
 
         print(f"\n  ✓ {len(validated)} PFDs validées trouvées")
-        return validated
+        return validated   # ← retourne une LISTE (pas un DataFrame)
 
 
 # ============================================================================
@@ -283,9 +312,9 @@ class ClassicalPFDDiscovery:
         print(f"  Candidats:  {len(self.candidates)}")
         print(f"  PFDs:       {len(self.validated_pfds)}")
 
-        if self.validated_pfds:
-            df_result = pd.DataFrame(self.validated_pfds)
-            df_result = df_result.sort_values(by="Score", ascending=False)
-            return df_result
+        if self.validated_pfds:   # fonctionne correctement sur une liste
+            return pd.DataFrame(self.validated_pfds).sort_values(
+                by="Score", ascending=False
+            )
 
         return pd.DataFrame()
