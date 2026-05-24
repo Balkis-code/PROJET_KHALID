@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 
-from mistral_pfd_algo import AgentInLoopPFDDiscovery
+from gemini_algo import AgentInLoopPFDDiscovery
 
 # =========================
 # PATH
@@ -18,27 +18,22 @@ dgov_files = [
 ]
 
 # =========================
-
-# =========================
 all_results = []
 
 print("\n" + "=" * 80)
-print("DGOV BATCH - MISTRAL AGENT PFD DISCOVERY")
+print("DGOV BATCH - GEMINI AGENT PFD DISCOVERY")
 print("=" * 80)
 
 start_total = time.time()
 
-for file_path in dgov_files:
+for i, file_path in enumerate(dgov_files):
 
     print("\n" + "-" * 80)
     print(f"FILE: {os.path.basename(file_path)}")
     print("-" * 80)
 
     try:
-        # ⚡ plus robuste sur CSV sales
         df = pd.read_csv(file_path, nrows=300, on_bad_lines="skip", dtype=str)
-
-        # nettoyer NaN et garder colonnes utiles
         df = df.dropna(axis=1, how="all")
 
         start = time.time()
@@ -64,6 +59,11 @@ for file_path in dgov_files:
     except Exception as e:
         print(f"❌ Error in {file_path}: {e}")
 
+    # Délai entre chaque fichier pour éviter le rate limit
+    if i < len(dgov_files) - 1:
+        print("\n⏳ Waiting 20s before next file...")
+        time.sleep(20)
+
 # =========================
 # FINAL RESULTS
 # =========================
@@ -71,14 +71,14 @@ if all_results:
     final_df = pd.concat(all_results, ignore_index=True)
 
     print("\n" + "=" * 80)
-    print("FINAL MISTRAL DGOV RESULTS")
+    print("FINAL GEMINI DGOV RESULTS")
     print("=" * 80)
 
     final_df = final_df.sort_values("Confidence", ascending=False)
 
     print(final_df)
 
-    final_df.to_csv("dgov_mistral_results.csv", index=False)
+    final_df.to_csv("dgov_gemini_results.csv", index=False)
 
 else:
     print("❌ No results found")
