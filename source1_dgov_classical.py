@@ -66,19 +66,7 @@ for i, file_path in enumerate(dgov_files, 1):
         # =========================
         # SOLUTION ANTI-LENTEUR
         # =========================
-        MAX_ROWS = 2000
-
-        if len(df) > MAX_ROWS:
-            print(f"  Dataset trop grand ({len(df)} lignes)")
-            print(f"  Réduction à {MAX_ROWS} lignes pour accélérer")
-
-            df = df.sample(
-                n=MAX_ROWS,
-                random_state=42
-            )
-
-        print(f"  ✓ {len(df)} lignes")
-        print(f"  ✓ {len(df.columns)} colonnes")
+      
 
         # =========================
         # ANALYSE
@@ -92,8 +80,8 @@ for i, file_path in enumerate(dgov_files, 1):
         start = time.time()
 
         pfds = discovery.discover(
-            min_support=0.95,
-            min_confidence=0.95,
+            min_support=0.50,
+            min_confidence=0.90,
             max_lhs_size=1
         )
 

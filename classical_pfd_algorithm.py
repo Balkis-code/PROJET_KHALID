@@ -176,8 +176,8 @@ class PFDValidator:
         self,
         candidates,
         enriched_df,
-        min_support=0.90,
-        min_confidence=0.95
+        min_support=0.50,
+        min_confidence=0.90
     ):
         print("\n[VALIDATION DES CANDIDATS]")
         print(f"  Seuils: support >= {min_support}, confidence >= {min_confidence}")
@@ -282,8 +282,8 @@ class ClassicalPFDDiscovery:
 
     def discover(
         self,
-        min_support=0.90,
-        min_confidence=0.95,
+        min_support=0.5,
+        min_confidence=0.9,
         max_lhs_size=1
     ):
         print("=" * 70)

@@ -3,62 +3,49 @@ import re
 import json
 import time
 import pandas as pd
-from google import genai
 from dotenv import load_dotenv
-
-# Ajout des exceptions de l'API Google pour la gestion des erreurs
-from google.api_core.exceptions import ServiceUnavailable, ResourceExhausted
+from groq import Groq
 
 from classical_pfd_algorithm import CandidateGenerator, PFDValidator
 
 load_dotenv()
 
-# =========================
-# GEMINI CALL (AVEC GESTION DES ERREURS & RETRIES)
-# =========================
 
-def call_gemini(prompt: str, max_retries: int = 5, initial_delay: int = 2) -> str:
-    """
-    Appelle l'API Gemini avec un mécanisme de retry (Exponential Backoff)
-    pour gérer les erreurs 503 (Demand Spikes) et 429 (Rate Limits).
-    """
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    client = genai.Client(api_key=api_key)
-    
-    delay = initial_delay
-    
+# =========================
+# GROQ CALL
+# =========================
+def call_groq(prompt: str, max_retries=5, base_delay=5) -> str:
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model='gemini-3.5-flash',
-                contents=[prompt]
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",  # modèle gratuit Groq
+                messages=[{"role": "user", "content": prompt}]
             )
-            return response.text
-            
-        except (ServiceUnavailable, ResourceExhausted) as e:
-            # ServiceUnavailable = Erreur 503 (Surcharge serveur)
-            # ResourceExhausted = Erreur 429 (Quota par minute atteint)
-            
-            if attempt == max_retries - 1:
-                print(f"\n[FATAL] Impossible de joindre l'API après {max_retries} tentatives. Erreur : {e}")
-                raise e
-                
-            print(f"\n[ATTENTION] L'API est saturée ou le quota est dépassé (Essai {attempt + 1}/{max_retries}).")
-            print(f"Attente de {delay} secondes avant d'anticiper le prochain essai...")
-            
-            time.sleep(delay)
-            delay *= 2  # Augmentation exponentielle du temps d'attente (2s, 4s, 8s, 16s...)
-            
+            return response.choices[0].message.content
+
         except Exception as e:
-            # Pour toute autre erreur (ex: clé API invalide, mauvaise syntaxe), on s'arrête immédiatement
-            print(f"\n[ERREUR CRITIQUE] Une erreur inattendue est survenue : {e}")
-            raise e
+            error_str = str(e).lower()
+
+            # Erreur de rate limit ou serveur indisponible → réessai
+            if "rate_limit" in error_str or "503" in error_str or "unavailable" in error_str:
+                if attempt < max_retries - 1:
+                    wait = base_delay * (2 ** attempt)  # 5s, 10s, 20s, 40s...
+                    print(f"  ⚠️  Groq busy, retrying in {wait}s... (attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait)
+                else:
+                    print(f"  ❌ Groq failed after {max_retries} attempts: {e}")
+                    raise
+            else:
+                raise
 
 
 # =========================
 # NOTATION CONVERTER
 # =========================
 def notation_to_derived(pattern_str: str):
+    """Convertit la notation texte en nom de colonne dérivée"""
     s = pattern_str.strip()
 
     m = re.match(r'^(prefix|suffix)\(([\w\s]+),\s*(\d+)\)$', s)
@@ -84,6 +71,7 @@ def notation_to_derived(pattern_str: str):
 # PROMPT
 # =========================
 def build_initial_prompt(df, history_rules=None):
+    """Construit le prompt pour Groq"""
     cols_info = "\n".join(
         f"- {col}: {df[col].dropna().astype(str).head(3).tolist()}"
         for col in df.columns
@@ -134,6 +122,7 @@ Format exact:
 # PARSER SAFE
 # =========================
 def parse_llm_response(response: str):
+    """Extrait le JSON de la réponse Groq"""
     try:
         match = re.search(r'\[.*\]', response, re.DOTALL)
         if not match:
@@ -158,8 +147,16 @@ def parse_llm_response(response: str):
 class AgentInLoopPFDDiscovery:
 
     def __init__(self, df, min_support=0.1, min_confidence=0.75):
+        """Initialise l'agent avec un dataframe
+
+        Args:
+            df: DataFrame à analyser
+            min_support: Support minimum (0.0 à 1.0) - défaut 0.1 (10%)
+            min_confidence: Confidence minimum (0.0 à 1.0) - défaut 0.75 (75%)
+        """
         self.df = df.copy()
 
+        # Construire la table enrichie avec les patterns
         generator = CandidateGenerator(df)
         generator._build_enriched_table()
 
@@ -169,11 +166,14 @@ class AgentInLoopPFDDiscovery:
         self.min_support = min_support
         self.min_confidence = min_confidence
 
+        # Historique des PFDs trouvées
         self.validated = []
         self.history = []
         self.seen_pairs = set()
 
+    # -------------------------
     def _convert(self, raw):
+        """Convertit les règles brutes en candidats"""
         candidates = []
 
         for r in raw:
@@ -194,17 +194,22 @@ class AgentInLoopPFDDiscovery:
 
         return candidates
 
+    # -------------------------
     def is_trivial(self, lhs, rhs):
+        """Détecte les PFDs triviales"""
         lhs_str = str(lhs)
 
         if "RowID" in lhs_str or "rowid" in lhs_str.lower():
             return True
+
         if lhs_str == rhs:
             return True
 
         return False
 
+    # -------------------------
     def _validate(self, candidates):
+        """Valide les candidats PFDs"""
         if not candidates:
             return []
 
@@ -233,9 +238,19 @@ class AgentInLoopPFDDiscovery:
 
         return results
 
+    # -------------------------
     def discover(self, n_iterations=3):
+        """Lance la découverte de PFDs
+
+        Args:
+            n_iterations: Nombre d'itérations Groq
+
+        Returns:
+            DataFrame avec les PFDs trouvées (colonnes: LHS, RHS, Support, Confidence, Score)
+        """
+
         print("\n" + "=" * 70)
-        print("GEMINI PFD DISCOVERY")
+        print("GROQ PFD DISCOVERY")
         print(f"min_support={self.min_support}, min_confidence={self.min_confidence}")
         print("=" * 70)
 
@@ -243,26 +258,33 @@ class AgentInLoopPFDDiscovery:
 
             print(f"\n[Iteration {iteration + 1}/{n_iterations}]")
 
+            # Construire le prompt avec historique
             prompt = build_initial_prompt(
                 self.df,
                 self.history if self.history else None
             )
 
-            print("  Calling Gemini...")
-            response = call_gemini(prompt)
+            # Appel Groq
+            print("  Calling Groq...")
+            response = call_groq(prompt)
 
-            # Délai entre les appels pour éviter le rate limit
-            time.sleep(5)
+            # Délai entre itérations pour respecter les limites de débit
+            if iteration < n_iterations - 1:
+                time.sleep(4)  # ~15 req/min max
 
+            # Parser la réponse
             raw = parse_llm_response(response)
             print(f"  → Extracted {len(raw)} rules from JSON")
 
+            # Convertir en candidats
             candidates = self._convert(raw)
             print(f"  → {len(candidates)} valid candidates")
 
+            # Valider les candidats
             valid = self._validate(candidates)
             print(f"  → {len(valid)} passed validation")
 
+            # Ajouter au résultat (éviter les doublons)
             added = 0
             for v in valid:
                 pair = (v["LHS"], v["RHS"])
@@ -282,6 +304,9 @@ class AgentInLoopPFDDiscovery:
 
             print(f"  Result: {added} new PFDs found (Total: {len(self.validated)})")
 
+        # ============================================================
+        # RETOUR FINAL
+        # ============================================================
         print(f"\n{'=' * 70}")
         print(f"FINAL RESULT: {len(self.validated)} unique PFDs discovered")
         print(f"{'=' * 70}")
@@ -292,8 +317,8 @@ class AgentInLoopPFDDiscovery:
             ])
 
         df_result = pd.DataFrame(self.validated).sort_values(
-            "Score", ascending=False
+            "Score",
+            ascending=False
         ).reset_index(drop=True)
 
         return df_result
-

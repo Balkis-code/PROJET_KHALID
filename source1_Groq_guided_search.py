@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 
-from Groq_algo import AgentInLoopPFDDiscovery
+from Groq_guided_search import GuidedSearchPFDDiscovery   
 
 # =========================
 # PATH
@@ -21,7 +21,7 @@ dgov_files = [
 all_results = []
 
 print("\n" + "=" * 80)
-print("DGOV BATCH - Groq_discovery")
+print("DGOV BATCH - Guided Search PFD Discovery")
 print("=" * 80)
 
 start_total = time.time()
@@ -38,13 +38,15 @@ for i, file_path in enumerate(dgov_files):
 
         start = time.time()
 
-        agent = AgentInLoopPFDDiscovery(
+        agent = GuidedSearchPFDDiscovery(        # ← nouvelle classe
             df,
             min_support=0.5,
-            min_confidence=0.9
+            min_confidence=0.9,
+            top_k_phase1=30,                     # candidats sélectionnés en phase 1
+            top_k_phase2=20                      # candidats sélectionnés en phase 2
         )
 
-        result = agent.discover(n_iterations=3)
+        result = agent.discover()                # ← plus de n_iterations
 
         elapsed = round(time.time() - start, 2)
 
@@ -54,7 +56,7 @@ for i, file_path in enumerate(dgov_files):
             all_results.append(result)
 
         print(f"✔ Done in {elapsed}s")
-        print(f"PFD found: {len(result)}")
+        print(f"PFDs found: {len(result)}")
 
     except Exception as e:
         print(f"❌ Error in {file_path}: {e}")
@@ -71,14 +73,15 @@ if all_results:
     final_df = pd.concat(all_results, ignore_index=True)
 
     print("\n" + "=" * 80)
-    print("FINAL Groq DGOV RESULTS")
+    print("FINAL GUIDED SEARCH DGOV RESULTS")
     print("=" * 80)
 
     final_df = final_df.sort_values("Confidence", ascending=False)
 
     print(final_df)
 
-    final_df.to_csv("dgov_Groq_results.csv", index=False)
+    final_df.to_csv("dgov_guided_search_results.csv", index=False)
+    print("\n✅ Results saved to dgov_guided_search_results.csv")
 
 else:
     print("❌ No results found")
